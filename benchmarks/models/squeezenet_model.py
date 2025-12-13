@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
-from torch.ao.quantization import QuantStub, DeQuantStub
+# from torch.ao.quantization import QuantStub, DeQuantStub
 from collections import OrderedDict
 import math
+import torch.quantization as tq
 
 
 class Fire(nn.Module):
@@ -34,8 +35,6 @@ class Fire(nn.Module):
 class SqueezeNetCIFAR10(nn.Module):
     def __init__(self, num_classes=10):
         super(SqueezeNetCIFAR10, self).__init__()
-        self.quant = QuantStub()
-        self.dequant = DeQuantStub()
 
         self.conv1 = nn.Conv2d(3, 96, kernel_size=3, stride=1, padding=1)
         self.bn1 = nn.BatchNorm2d(96)
@@ -61,7 +60,6 @@ class SqueezeNetCIFAR10(nn.Module):
         self.avg_pool = nn.AvgPool2d(4)
 
     def forward(self, x):
-        x = self.quant(x)
         x = self.relu(self.bn1(self.conv1(x)))
         x = self.maxpool1(x)
 
@@ -83,7 +81,6 @@ class SqueezeNetCIFAR10(nn.Module):
         x = self.dropout_final(x)
         x = self.avg_pool(x)
         x = torch.flatten(x, 1)
-        x = self.dequant(x)
         return x
     
     def load_model(self, path='squeezenet_cifar10.pth',device='cpu'):
@@ -105,3 +102,42 @@ class SqueezeNetCIFAR10(nn.Module):
     def save_model(self, path='squeezenet_cifar10.pth'):
         torch.save(self.state_dict(), path)
         print(f"Model saved to {path}")
+
+
+class SqueezeNetCIFAR10_QAT(SqueezeNetCIFAR10):
+    def __init__(self, num_classes=10):
+        super().__init__(num_classes)
+        # add QAT stubs
+        self.quant = tq.QuantStub()
+        self.dequant = tq.DeQuantStub()
+
+    def forward(self, x):
+        # quantize input
+        x = self.quant(x)
+
+        # original forward
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.maxpool1(x)
+
+        x = self.fire2(x)
+        x = self.fire3(x)
+        x = self.fire4(x)
+        x = self.dropout4(x)
+        x = self.maxpool2(x)
+
+        x = self.fire5(x)
+        x = self.fire6(x)
+        x = self.fire7(x)
+        x = self.fire8(x)
+        x = self.dropout8(x)
+        x = self.maxpool3(x)
+
+        x = self.fire9(x)
+        x = self.conv10(x)
+        x = self.dropout_final(x)
+        x = self.avg_pool(x)
+        x = torch.flatten(x, 1)
+
+        # dequantize output
+        x = self.dequant(x)
+        return x

@@ -2,14 +2,10 @@ import torch
 import torch.nn as nn
 import torch.quantization as tq
 from collections import OrderedDict
-import math
 
 class AlexNetCIFAR10(nn.Module):
     def __init__(self, num_classes=10):
         super().__init__()
-
-        self.quant = tq.QuantStub()
-        self.dequant = tq.DeQuantStub()
 
         self.features = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1),
@@ -56,12 +52,10 @@ class AlexNetCIFAR10(nn.Module):
                         nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        x = self.quant(x)
         x = self.features(x)
         x = self.global_avg_pool(x)
         x = torch.flatten(x, 1)
         x = self.classifier(x)
-        x = self.dequant(x)
         return x
     
     def load_model(self, path='alexnet_cifar10.pth',device='cpu'):
@@ -84,12 +78,24 @@ class AlexNetCIFAR10(nn.Module):
         torch.save(self.state_dict(), path)
         print(f"Model saved to {path}")
     
-    # def forward(self, x):
-    #     x = self.quant(x)
-    #     x = self.features(x)
-    #     x = torch.flatten(x, 1)
-    #     x = self.classifier(x)
-    #     x = self.dequant(x)
-    #     return x
+class AlexNetCIFAR10_QAT(AlexNetCIFAR10):
+    def __init__(self, num_classes=10):
+        super().__init__(num_classes)
+        self.quant = tq.QuantStub()
+        self.dequant = tq.DeQuantStub()
+
+    def forward(self, x):
+        # quantize input
+        x = self.quant(x)
+        
+        # forward through features
+        x = self.features(x)
+        x = self.global_avg_pool(x)
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
+        
+        # dequantize output
+        x = self.dequant(x)
+        return x
 
     

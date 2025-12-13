@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.quantization as tq
 
 
 class BasicBlock(nn.Module):
@@ -32,7 +33,7 @@ class BasicBlock(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10, inplace_relu=False):
+    def __init__(self, block=BasicBlock, num_blocks=[5, 5, 5], num_classes=10, inplace_relu=False):
         super().__init__()
         self.in_planes = 16
 
@@ -72,6 +73,53 @@ class ResNet(nn.Module):
         out = out.view(out.size(0), -1)
         return self.fc(out)
 
+class BasicBlockQAT(nn.Module):
+    expansion = 1
 
-def ResNet32(num_classes=10, inplace_relu=False):
-    return ResNet(BasicBlock, [5, 5, 5], num_classes, inplace_relu)
+    def __init__(self, in_planes, planes, stride=1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride,
+                               padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+
+        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1,
+                               padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_planes != planes:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_planes, planes, kernel_size=1,
+                          stride=stride, bias=False),
+                nn.BatchNorm2d(planes)
+            )
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += self.shortcut(x)
+        return F.relu(out)
+    
+class ResNetQAT(ResNet):
+    def __init__(self, block=BasicBlockQAT, num_blocks=[5,5,5], num_classes=10, inplace_relu=False):
+        super().__init__(block=block, num_blocks=num_blocks, num_classes=num_classes, inplace_relu=inplace_relu)
+        # add QAT stubs
+        self.quant = tq.QuantStub()
+        self.dequant = tq.DeQuantStub()
+
+    def forward(self, x):
+        # quantize input
+        x = self.quant(x)
+
+        # original forward logic
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = self.avgpool(out)
+        out = out.view(out.size(0), -1)
+        out = self.fc(out)
+
+        # dequantize output
+        out = self.dequant(out)
+        return out

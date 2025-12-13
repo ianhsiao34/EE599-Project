@@ -162,3 +162,19 @@ def train_model(model,train_loader,test_loader,train=True,test=True,device='cpu'
       print(f"Test/Val Loss: {test_loss:.4f}, Test/Val Acc: {test_acc:.2f}%")
 
   return metrics
+
+def evaluate(model, test_loader,device):
+    model.eval()
+    model.to(device)
+    correct, total = 0, 0
+
+    with torch.no_grad():
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            _, pred = outputs.max(1)
+            correct += pred.eq(labels).sum().item()
+            total += labels.size(0)
+
+    acc = 100.0 * correct / total
+    return acc
