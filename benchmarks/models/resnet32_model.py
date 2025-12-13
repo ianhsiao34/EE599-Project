@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.quantization as tq
+from collections import OrderedDict
 
 
 class BasicBlock(nn.Module):
@@ -72,6 +73,22 @@ class ResNet(nn.Module):
         out = self.avgpool(out)
         out = out.view(out.size(0), -1)
         return self.fc(out)
+    
+    def load_model(self, path='alexnet_cifar10.pth',device='cpu'):
+        state_dict = torch.load(path,map_location=device)
+
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            if k.startswith('module.'):
+                k = k[len('module.'):]
+            new_state_dict[k] = v
+
+        self.load_state_dict(new_state_dict)
+        self.to(device)
+        self.eval()
+
+        print(f"Model loaded from {path}")
+        # print(self)
 
 class BasicBlockQAT(nn.Module):
     expansion = 1
